@@ -12,8 +12,7 @@ import {
   ShieldCheck,
   Zap,
   Info,
-  ChevronRight,
-  LogIn,
+  Scan,
 } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
 import { CameraCaptureModal } from '@/components/CameraCaptureModal';
@@ -48,6 +47,9 @@ export default function HomePage() {
   const [user, setUser] = useState<GoogleUser | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+
+  // Auto Crop & Detection setting (Default: Bật)
+  const [autoCropEnabled, setAutoCropEnabled] = useState<boolean>(true);
 
   // Scanned pages state
   const [pages, setPages] = useState<ScannedPage[]>([]);
@@ -160,7 +162,9 @@ export default function HomePage() {
         reader.readAsDataURL(file);
       });
 
-      const quad = await detectDocumentCorners(dataUrl);
+      // Pass autoCropEnabled toggle
+      const quad = await detectDocumentCorners(dataUrl, autoCropEnabled);
+      // Default to "Màu" (magic_color)
       const processed = await processScannedImage(
         dataUrl,
         quad,
@@ -184,6 +188,7 @@ export default function HomePage() {
         filter: 'magic_color',
         brightness: 0,
         contrast: 0,
+        warning: processed.warning,
         createdAt: Date.now() + i,
       });
     }
@@ -224,6 +229,7 @@ export default function HomePage() {
               thumbnailUrl: res.thumbnailUrl,
               width: res.width,
               height: res.height,
+              warning: res.warning,
             }
           : p
       )
@@ -266,6 +272,7 @@ export default function HomePage() {
             contrast: updatedPage.contrast,
             processedDataUrl: res.processedDataUrl,
             thumbnailUrl: res.thumbnailUrl,
+            warning: res.warning,
           };
         })
       );
@@ -306,6 +313,7 @@ export default function HomePage() {
   };
 
   const estimatedSize = estimatePdfSize(pages.length, 'balanced');
+  const hasWarnings = pages.some((p) => p.warning);
 
   return (
     <div className="flex-1 flex flex-col bg-slate-950 text-slate-100">
@@ -362,12 +370,12 @@ export default function HomePage() {
                 <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight mb-2">
                   Quét Hợp Đồng & Giấy Tờ
                 </h2>
-                <p className="text-xs sm:text-sm text-slate-400 max-w-sm mb-7 leading-relaxed">
+                <p className="text-xs sm:text-sm text-slate-400 max-w-sm mb-6 leading-relaxed">
                   Chụp ảnh liên tục nhiều trang, tự động nắn thẳng góc, tăng độ nét văn bản và lưu trực tiếp lên Google Drive.
                 </p>
 
                 {/* Primary Action Buttons */}
-                <div className="w-full space-y-3 mb-8">
+                <div className="w-full space-y-3 mb-5">
                   <button
                     onClick={() => setIsCameraOpen(true)}
                     className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm sm:text-base flex items-center justify-center gap-2.5 shadow-xl shadow-blue-600/30 transition active:scale-95"
@@ -392,6 +400,21 @@ export default function HomePage() {
                     onChange={handleAddFromGallery}
                     className="hidden"
                   />
+                </div>
+
+                {/* Auto Crop & Detection Toggle Switch */}
+                <div className="flex items-center justify-center mb-6">
+                  <button
+                    onClick={() => setAutoCropEnabled(!autoCropEnabled)}
+                    className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition ${
+                      autoCropEnabled
+                        ? 'bg-blue-600/20 border-blue-500/80 text-blue-300'
+                        : 'bg-slate-900 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <Scan className="w-3.5 h-3.5" />
+                    <span>Tự động cắt & nhận dạng: {autoCropEnabled ? 'BẬT' : 'TẮT'}</span>
+                  </button>
                 </div>
 
                 {/* Quick Google Drive Connection Box */}
@@ -454,6 +477,14 @@ export default function HomePage() {
             ) : (
               /* ACTIVE SCAN SESSION VIEW */
               <div className="flex-1 flex flex-col pb-24">
+                {/* Warning Notification if any image was restored */}
+                {hasWarnings && (
+                  <div className="mb-3 p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2.5">
+                    <Info className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Một số ảnh có độ sáng quá tối, hệ thống đã tự động khôi phục ảnh gốc để đảm bảo chất lượng văn bản.</span>
+                  </div>
+                )}
+
                 {/* Session Top Status Bar */}
                 <div className="mb-4 p-3 bg-slate-900/90 rounded-2xl border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                   <div className="flex items-center gap-2.5">
@@ -470,8 +501,22 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  {/* Destination Folder button & Clear button */}
-                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                  {/* Destination Folder button, Auto Crop toggle, Clear button */}
+                  <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+                    <button
+                      onClick={() => setAutoCropEnabled(!autoCropEnabled)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition ${
+                        autoCropEnabled
+                          ? 'bg-blue-600/20 border-blue-500 text-blue-300'
+                          : 'bg-slate-800 border-slate-700 text-slate-400'
+                      }`}
+                      title="Bật/Tắt tự động nhận dạng viền"
+                    >
+                      <Scan className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Tự nhận diện:</span>
+                      <span>{autoCropEnabled ? 'Bật' : 'Tắt'}</span>
+                    </button>
+
                     <button
                       onClick={() => {
                         if (!user) {
@@ -539,6 +584,8 @@ export default function HomePage() {
       {/* 1. Camera Capture Modal */}
       <CameraCaptureModal
         isOpen={isCameraOpen}
+        autoCropEnabled={autoCropEnabled}
+        onToggleAutoCrop={setAutoCropEnabled}
         onClose={() => setIsCameraOpen(false)}
         onPagesCaptured={handlePagesCapturedFromCamera}
       />

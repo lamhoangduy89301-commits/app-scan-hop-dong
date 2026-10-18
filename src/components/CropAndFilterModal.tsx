@@ -96,7 +96,7 @@ export const CropAndFilterModal: React.FC<CropAndFilterModalProps> = ({
     if (!page) return;
     setIsProcessing(true);
     try {
-      const detected = await detectDocumentCorners(page.originalDataUrl);
+      const detected = await detectDocumentCorners(page.originalDataUrl, true);
       setQuad(detected);
     } finally {
       setIsProcessing(false);
@@ -164,6 +164,7 @@ export const CropAndFilterModal: React.FC<CropAndFilterModalProps> = ({
         thumbnailUrl: finalRes.thumbnailUrl,
         width: finalRes.width,
         height: finalRes.height,
+        warning: finalRes.warning,
       };
 
       onSave(updated, applyToAll);
@@ -334,9 +335,9 @@ export const CropAndFilterModal: React.FC<CropAndFilterModalProps> = ({
             {/* Filter Mode Buttons */}
             <div className="grid grid-cols-4 gap-2">
               {[
-                { id: 'magic_color', label: 'Rõ nét' },
+                { id: 'magic_color', label: 'Màu' },
                 { id: 'bw_document', label: 'Trắng đen' },
-                { id: 'grayscale', label: 'Xám' },
+                { id: 'grayscale', label: 'Thang xám' },
                 { id: 'original', label: 'Gốc' },
               ].map((m) => (
                 <button

@@ -92,6 +92,28 @@ const SortablePageCard: React.FC<{
           className="max-h-full max-w-full object-contain rounded shadow-sm select-none pointer-events-none"
         />
 
+        {/* Filter badge */}
+        <div className="absolute top-2 left-2 z-10">
+          <span className="px-1.5 py-0.5 rounded bg-slate-900/80 backdrop-blur-xs text-[10px] text-slate-300 border border-slate-700/80 font-medium">
+            {page.filter === 'magic_color'
+              ? 'Màu'
+              : page.filter === 'bw_document'
+              ? 'Trắng đen'
+              : page.filter === 'grayscale'
+              ? 'Thang xám'
+              : 'Gốc'}
+          </span>
+        </div>
+
+        {/* Gentle warning if image was auto-restored */}
+        {page.warning && (
+          <div className="absolute bottom-2 inset-x-2 z-10">
+            <span className="block px-2 py-1 rounded-lg bg-amber-500/90 text-slate-950 text-[10px] font-bold text-center shadow">
+              Đã giữ ảnh gốc
+            </span>
+          </div>
+        )}
+
         {/* Hover overlay hint */}
         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded">
           <span className="px-2.5 py-1 bg-slate-900/90 text-white text-[11px] font-semibold rounded-lg border border-slate-700 flex items-center gap-1">

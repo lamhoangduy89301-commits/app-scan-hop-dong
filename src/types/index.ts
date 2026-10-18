@@ -28,6 +28,7 @@ export interface ScannedPage {
   filter: FilterMode;
   brightness: number; // -50 to 50 (default 0)
   contrast: number; // -50 to 50 (default 0)
+  warning?: string;
   createdAt: number;
 }
 

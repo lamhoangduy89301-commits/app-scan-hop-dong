@@ -1,18 +1,22 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, X, Check, Image as ImageIcon, Zap, ZapOff, RefreshCw, AlertCircle } from 'lucide-react';
+import { Camera, X, Check, Image as ImageIcon, Zap, ZapOff, RefreshCw, AlertCircle, Scan, Crop } from 'lucide-react';
 import { ScannedPage } from '@/types';
 import { detectDocumentCorners, processScannedImage } from '@/lib/imageProcessing';
 
 interface CameraCaptureModalProps {
   isOpen: boolean;
+  autoCropEnabled: boolean;
+  onToggleAutoCrop: (enabled: boolean) => void;
   onClose: () => void;
   onPagesCaptured: (newPages: ScannedPage[]) => void;
 }
 
 export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   isOpen,
+  autoCropEnabled,
+  onToggleAutoCrop,
   onClose,
   onPagesCaptured,
 }) => {
@@ -141,18 +145,21 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
+      // Draw onto white background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const rawDataUrl = canvas.toDataURL('image/jpeg', 0.92);
 
-      // Auto detect corners
-      const quad = await detectDocumentCorners(rawDataUrl);
+      // Detect corners or default
+      const quad = await detectDocumentCorners(rawDataUrl, autoCropEnabled);
 
-      // Process initial image
+      // Process image: default to "Màu" (magic_color)
       const processed = await processScannedImage(
         rawDataUrl,
         quad,
         0,
-        'magic_color', // Default enhanced magic color for contracts
+        'magic_color',
         0,
         0,
         2000,
@@ -171,6 +178,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         filter: 'magic_color',
         brightness: 0,
         contrast: 0,
+        warning: processed.warning,
         createdAt: Date.now(),
       };
 
@@ -198,8 +206,17 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         reader.readAsDataURL(file);
       });
 
-      const quad = await detectDocumentCorners(dataUrl);
-      const processed = await processScannedImage(dataUrl, quad, 0, 'magic_color', 0, 0, 2000, 0.75);
+      const quad = await detectDocumentCorners(dataUrl, autoCropEnabled);
+      const processed = await processScannedImage(
+        dataUrl,
+        quad,
+        0,
+        'magic_color',
+        0,
+        0,
+        2000,
+        0.75
+      );
 
       newItems.push({
         id: `page_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 7)}`,
@@ -213,6 +230,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         filter: 'magic_color',
         brightness: 0,
         contrast: 0,
+        warning: processed.warning,
         createdAt: Date.now() + i,
       });
     }
@@ -244,10 +262,19 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
           <X className="w-5 h-5 text-white" />
         </button>
 
-        <div className="text-center">
-          <p className="text-sm font-semibold tracking-wide">Chụp tài liệu / Hợp đồng</p>
-          <p className="text-[11px] text-slate-300">Căn giấy tờ vuông góc trong khung</p>
-        </div>
+        {/* Auto Crop & Detection Toggle */}
+        <button
+          onClick={() => onToggleAutoCrop(!autoCropEnabled)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-md transition border ${
+            autoCropEnabled
+              ? 'bg-blue-600/80 border-blue-400 text-white shadow-sm'
+              : 'bg-slate-900/60 border-slate-700 text-slate-300'
+          }`}
+          title="Bật/Tắt tự động cắt nắn viền giấy tờ"
+        >
+          <Scan className="w-3.5 h-3.5" />
+          <span>Tự nhận diện: {autoCropEnabled ? 'Bật' : 'Tắt'}</span>
+        </button>
 
         <div className="flex items-center gap-2">
           {hasTorch && (
