@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Check, RotateCw, Crop, Sliders, Wand2, RefreshCw, Sun, Contrast } from 'lucide-react';
+import { X, Check, RotateCw, Crop, Sliders, Wand2, RefreshCw, Sun, Contrast, Info } from 'lucide-react';
 import { CropQuad, FilterMode, Point, ScannedPage } from '@/types';
 import { detectDocumentCorners, getDefaultCropQuad, processScannedImage } from '@/lib/imageProcessing';
 
@@ -27,12 +27,22 @@ export const CropAndFilterModal: React.FC<CropAndFilterModalProps> = ({
   const [applyToAll, setApplyToAll] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [previewUrl, setPreviewUrl] = useState<string>('');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Dragging corner state
   const [draggingCorner, setDraggingCorner] = useState<keyof CropQuad | null>(null);
-  const [touchPoint, setTouchPoint] = useState<Point | null>(null);
+  const [, setTouchPoint] = useState<Point | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToastMessage(msg);
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastMessage(null);
+    }, 2800);
+  }, []);
 
   // Initialize state when modal opens with page data
   useEffect(() => {
@@ -45,6 +55,7 @@ export const CropAndFilterModal: React.FC<CropAndFilterModalProps> = ({
       setPreviewUrl(page.processedDataUrl);
       setApplyToAll(false);
       setActiveTab('crop');
+      setToastMessage(null);
     }
   }, [page, isOpen]);
 
@@ -83,12 +94,17 @@ export const CropAndFilterModal: React.FC<CropAndFilterModalProps> = ({
 
   // Rotate 90 degrees clockwise
   const handleRotate = () => {
-    setRotation((prev) => (prev + 90) % 360);
+    setRotation((prev) => {
+      const next = (prev + 90) % 360;
+      showToast(`Đã xoay 90° (Góc hiện tại: ${next}°)`);
+      return next;
+    });
   };
 
   // Reset Quad to full image
   const handleResetQuad = () => {
     setQuad(getDefaultCropQuad());
+    showToast('Đã đặt 4 góc về trọn khung hình.');
   };
 
   // Auto detect corners
@@ -96,8 +112,16 @@ export const CropAndFilterModal: React.FC<CropAndFilterModalProps> = ({
     if (!page) return;
     setIsProcessing(true);
     try {
-      const detected = await detectDocumentCorners(page.originalDataUrl, true);
-      setQuad(detected);
+      const res = await detectDocumentCorners(page.originalDataUrl, true);
+      setQuad({ tl: res.tl, tr: res.tr, br: res.br, bl: res.bl });
+      if (res.detected) {
+        showToast('Đã tự căn góc tài liệu thành công.');
+      } else {
+        showToast('Không nhận dạng được, hãy kéo góc thủ công.');
+      }
+    } catch {
+      setQuad(getDefaultCropQuad());
+      showToast('Không nhận dạng được, hãy kéo góc thủ công.');
     } finally {
       setIsProcessing(false);
     }
@@ -113,8 +137,12 @@ export const CropAndFilterModal: React.FC<CropAndFilterModalProps> = ({
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
-      if (!draggingCorner || !containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
+      if (!draggingCorner) return;
+      const target = imageRef.current || containerRef.current;
+      if (!target) return;
+      const rect = target.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
       const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
       const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
 
@@ -225,61 +253,80 @@ export const CropAndFilterModal: React.FC<CropAndFilterModalProps> = ({
         </button>
       </div>
 
+      {/* Floating Status Toast Notification */}
+      {toastMessage && (
+        <div className="absolute top-16 inset-x-0 z-30 flex justify-center px-4 pointer-events-none transition-all">
+          <div className="bg-slate-900/95 border border-slate-700 text-slate-100 text-xs px-4 py-2 rounded-xl shadow-xl flex items-center gap-2 backdrop-blur-md">
+            <Info className="w-4 h-4 text-blue-400 shrink-0" />
+            <span>{toastMessage}</span>
+          </div>
+        </div>
+      )}
+
       {/* Main Center Canvas / Image Container */}
       <div
-        className="relative flex-1 flex items-center justify-center p-4 overflow-hidden touch-none"
+        className="relative flex-1 flex flex-col items-center justify-center p-4 overflow-hidden touch-none"
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
         {activeTab === 'crop' ? (
           /* CROP TAB: Interactive 4-corner polygon */
-          <div
-            ref={containerRef}
-            className="relative max-w-full max-h-[65vh] inline-block shadow-2xl rounded-lg overflow-hidden border border-slate-700 select-none"
-          >
-            <img
-              ref={imageRef}
-              src={page.originalDataUrl}
-              alt="Cắt góc tài liệu"
-              className="max-w-full max-h-[65vh] object-contain pointer-events-none block"
-            />
-
-            {/* SVG Connecting Polygon */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
-              <polygon
-                points={`
-                  ${quad.tl.x * 100}%,${quad.tl.y * 100}% 
-                  ${quad.tr.x * 100}%,${quad.tr.y * 100}% 
-                  ${quad.br.x * 100}%,${quad.br.y * 100}% 
-                  ${quad.bl.x * 100}%,${quad.bl.y * 100}%
-                `}
-                fill="rgba(59, 130, 246, 0.22)"
-                stroke="#3b82f6"
-                strokeWidth="2.5"
-                strokeDasharray="4 2"
+          <div className="relative flex flex-col items-center max-w-full max-h-[65vh]">
+            {rotation > 0 && (
+              <div className="mb-2">
+                <span className="text-[11px] text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2.5 py-1 rounded-full font-medium">
+                  Đang xoay {rotation}° (Xem trước ở tab Bộ lọc)
+                </span>
+              </div>
+            )}
+            <div
+              ref={containerRef}
+              className="relative max-w-full max-h-[60vh] inline-block shadow-2xl rounded-lg overflow-hidden border border-slate-700 select-none"
+            >
+              <img
+                ref={imageRef}
+                src={page.originalDataUrl}
+                alt="Cắt góc tài liệu"
+                className="max-w-full max-h-[60vh] object-contain pointer-events-none block"
               />
-            </svg>
 
-            {/* 4 Interactive Corner Handles */}
-            {(['tl', 'tr', 'br', 'bl'] as Array<keyof CropQuad>).map((corner) => {
-              const pt = quad[corner];
-              const isDragging = draggingCorner === corner;
-              return (
-                <div
-                  key={corner}
-                  onPointerDown={(e) => handlePointerDown(corner, e)}
-                  style={{
-                    left: `${pt.x * 100}%`,
-                    top: `${pt.y * 100}%`,
-                  }}
-                  className={`absolute -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full flex items-center justify-center cursor-move z-20 touch-none ${
-                    isDragging ? 'scale-125' : 'hover:scale-110'
-                  }`}
-                >
-                  <div className="w-5 h-5 rounded-full bg-blue-500 border-2 border-white shadow-lg ring-4 ring-blue-500/30" />
-                </div>
-              );
-            })}
+              {/* SVG Connecting Polygon */}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
+                <polygon
+                  points={`
+                    ${quad.tl.x * 100}%,${quad.tl.y * 100}% 
+                    ${quad.tr.x * 100}%,${quad.tr.y * 100}% 
+                    ${quad.br.x * 100}%,${quad.br.y * 100}% 
+                    ${quad.bl.x * 100}%,${quad.bl.y * 100}%
+                  `}
+                  fill="rgba(59, 130, 246, 0.22)"
+                  stroke="#3b82f6"
+                  strokeWidth="2.5"
+                  strokeDasharray="4 2"
+                />
+              </svg>
+
+              {/* 4 Interactive Corner Handles */}
+              {(['tl', 'tr', 'br', 'bl'] as Array<keyof CropQuad>).map((corner) => {
+                const pt = quad[corner];
+                const isDragging = draggingCorner === corner;
+                return (
+                  <div
+                    key={corner}
+                    onPointerDown={(e) => handlePointerDown(corner, e)}
+                    style={{
+                      left: `${pt.x * 100}%`,
+                      top: `${pt.y * 100}%`,
+                    }}
+                    className={`absolute -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full flex items-center justify-center cursor-move z-20 touch-none ${
+                      isDragging ? 'scale-125' : 'hover:scale-110'
+                    }`}
+                  >
+                    <div className="w-5 h-5 rounded-full bg-blue-500 border-2 border-white shadow-lg ring-4 ring-blue-500/30" />
+                  </div>
+                );
+              })}
+            </div>
           </div>
         ) : (
           /* FILTER TAB: Processed Real-time Preview */
@@ -307,7 +354,8 @@ export const CropAndFilterModal: React.FC<CropAndFilterModalProps> = ({
           <div className="p-4 flex items-center justify-between gap-2 max-w-md mx-auto">
             <button
               onClick={handleAutoDetect}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-blue-300 border border-slate-700 transition active:scale-95"
+              disabled={isProcessing}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-blue-300 border border-slate-700 transition active:scale-95 disabled:opacity-50"
             >
               <Wand2 className="w-4 h-4 text-blue-400" />
               <span>Tự căn góc</span>
@@ -315,7 +363,8 @@ export const CropAndFilterModal: React.FC<CropAndFilterModalProps> = ({
 
             <button
               onClick={handleResetQuad}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 border border-slate-700 transition active:scale-95"
+              disabled={isProcessing}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 border border-slate-700 transition active:scale-95 disabled:opacity-50"
             >
               <RefreshCw className="w-4 h-4 text-slate-400" />
               <span>Trọn hình</span>
@@ -323,15 +372,29 @@ export const CropAndFilterModal: React.FC<CropAndFilterModalProps> = ({
 
             <button
               onClick={handleRotate}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 border border-slate-700 transition active:scale-95"
+              disabled={isProcessing}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 border border-slate-700 transition active:scale-95 disabled:opacity-50"
             >
               <RotateCw className="w-4 h-4 text-amber-400" />
-              <span>Xoay 90°</span>
+              <span>Xoay 90°{rotation > 0 ? ` (${rotation}°)` : ''}</span>
             </button>
           </div>
         ) : (
           /* Filter & Sliders Controls */
           <div className="p-4 space-y-3 max-w-md mx-auto">
+            {/* Quick Actions Row: Rotate in Filter tab */}
+            <div className="flex items-center justify-between pb-1">
+              <span className="text-xs font-medium text-slate-400">Chế độ màu sắc:</span>
+              <button
+                onClick={handleRotate}
+                disabled={isProcessing}
+                className="flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-amber-300 border border-slate-700 transition active:scale-95"
+              >
+                <RotateCw className="w-3.5 h-3.5 text-amber-400" />
+                <span>Xoay 90° ({rotation}°)</span>
+              </button>
+            </div>
+
             {/* Filter Mode Buttons */}
             <div className="grid grid-cols-4 gap-2">
               {[
